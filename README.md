@@ -98,3 +98,17 @@ dengan cara yang sama, contoh: `node compare-suite.js`.
 - `debug-case354.js`, `inspect-case.js` — tool debug/inspeksi case satu-kali.
 - `config.js` — konfigurasi bersama (project/run Qase) yang dipakai script-script di atas.
 - `zoom-extension/` — Chrome extension kecil untuk auto-zoom tab app.qase.io.
+
+## CI
+
+Setiap push/PR ke `master` otomatis dicek lewat GitHub Actions (lihat
+`.github/workflows/ci.yml`): syntax check semua file `.js`, lint (ESLint), dan
+verifikasi `npm ci` + install Playwright Chromium jalan bersih. Berguna buat
+nangkep error dasar kalau ada kontributor lain yang ikut develop.
+
+Jalankan manual sebelum push:
+
+```
+npm run syntax-check
+npm run lint
+```
