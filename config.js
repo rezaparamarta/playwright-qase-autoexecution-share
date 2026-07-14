@@ -6,9 +6,9 @@
 // ganti nilai di sini -- tidak perlu dicari & diubah satu per satu di
 // tiap file.
 //
-// (inspect-case.js dan codegen-output.js sengaja tidak ikut memakai file
-// ini -- keduanya script debug sekali-pakai dengan URL run & case yang
-// di-hardcode langsung, bukan diturunkan dari PROJECT_NAME/RUN_TITLE.)
+// (inspect-case.js sengaja tidak ikut memakai file ini -- itu script debug
+// sekali-pakai dengan URL run & case yang di-hardcode langsung, bukan
+// diturunkan dari PROJECT_NAME/RUN_TITLE.)
 
 const path = require('path');
 const os = require('os');
