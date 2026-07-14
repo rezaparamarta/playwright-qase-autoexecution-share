@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Qase Auto Zoom",
+  "version": "1.0",
+  "permissions": ["tabs"],
+  "host_permissions": ["https://app.qase.io/*"],
+  "background": {
+    "service_worker": "background.js"
+  }
+}
