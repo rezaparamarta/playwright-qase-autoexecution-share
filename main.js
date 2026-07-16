@@ -16,6 +16,14 @@ const {
   PROJECTS_URL,
   EVIDENCE_SIT_DIR,
 } = require('./config');
+const {
+  MASKING_ENABLED,
+  initMaskingWorker,
+  shutdownMaskingWorker,
+  maskEvidenceImage,
+  writeMaskingManifest,
+  EvidenceMaskingError,
+} = require('./evidence-masking');
 
 // ---------------------------------------------------------------------------
 // Konfigurasi -- sesuaikan bagian ini kalau mengarahkan script ke run atau
@@ -965,14 +973,28 @@ async function collectEvidenceForStepOnce(page, caseText, caseId, stepText, step
         );
       }
       const buffer = await response.body();
+
+      // Masking (kalau aktif) dilakukan DI SINI, sebelum file pernah
+      // ditulis ke disk -- byte mentah/asli tidak pernah menyentuh
+      // EVIDENCE_SIT_DIR sama sekali. Kegagalan OCR di titik ini
+      // dilempar sebagai EvidenceMaskingError, ditangkap sefatal
+      // EvidenceIntegrityError di bawah (lihat percabangan di akhir file).
+      const maskedBuffer = MASKING_ENABLED
+        ? (await maskEvidenceImage(buffer, { sourceLabel: `case "${caseText}" step ${stepNumber} gambar ke-${i + 1}` })).maskedBuffer
+        : buffer;
+
       const filename = nextAvailableFilename(EVIDENCE_SIT_DIR, 'image', '.png');
       const sitEvidencePath = path.join(EVIDENCE_SIT_DIR, filename);
-      fs.writeFileSync(sitEvidencePath, buffer);
+      fs.writeFileSync(sitEvidencePath, maskedBuffer);
       evidencePaths.push(sitEvidencePath);
       console.log(`Evidence tersimpan (step ${stepNumber}): ${sitEvidencePath}`);
     }
   } catch (err) {
-    if (err instanceof EvidenceIntegrityError) throw err;
+    // EvidenceMaskingError diperlakukan sama seperti EvidenceIntegrityError
+    // (dilempar apa adanya, tanpa dibungkus ulang) -- kegagalan OCR tidak
+    // ada hubungannya dengan state drawer SIT, jadi pengecekan
+    // isDrawerShowingCase di bawah cuma bikin pesan errornya membingungkan.
+    if (err instanceof EvidenceIntegrityError || err instanceof EvidenceMaskingError) throw err;
     // Sampai titik ini, "tidak ada evidence" sudah ditangani lewat return
     // di atas -- exception yang nyasar ke sini berarti ada kegagalan
     // teknis (klik gagal, evaluate gagal, dll), bukan sekadar step yang
@@ -1476,6 +1498,11 @@ async function launchBrowser() {
   // dicoba lagi di attempt berikutnya.
   const permanentlyFailed = [];
 
+  // Worker OCR di-init sekali lepas dari retry/relaunch browser --
+  // cold-start-nya independen dari Chrome/Playwright, jadi tidak perlu
+  // (dan tidak boleh) diulang tiap attempt.
+  if (MASKING_ENABLED) await initMaskingWorker();
+
   for (let attempt = 1; attempt <= MAX_LAUNCH_ATTEMPTS; attempt++) {
     console.log(`\n=== Attempt ${attempt}/${MAX_LAUNCH_ATTEMPTS} ===`);
     if (attempt > 1) {
@@ -1522,15 +1549,24 @@ async function launchBrowser() {
           await processCase(page, uatPage, caseText, caseId, sitSuite, uatSuite);
           remainingCases.shift();
         } catch (err) {
-          if (err instanceof EvidenceIntegrityError) {
-            // Evidence integrity tidak bisa dipastikan -- stop total,
-            // jangan lanjut ke case lain (bisa saja menyimpan/melampirkan
-            // evidence yang salah/tidak lengkap tanpa ketahuan). Tutup
-            // browser dan keluar dengan exit code non-zero supaya jelas
-            // ada yang error.
+          if (err instanceof EvidenceIntegrityError || err instanceof EvidenceMaskingError) {
+            // Evidence integrity tidak bisa dipastikan (termasuk kalau
+            // masking-nya sendiri yang gagal -- lihat evidence-masking.js)
+            // -- stop total, jangan lanjut ke case lain (bisa saja
+            // menyimpan/melampirkan evidence yang salah/tidak lengkap/
+            // belum ter-mask tanpa ketahuan). Tutup browser dan keluar
+            // dengan exit code non-zero supaya jelas ada yang error.
             console.error(`\n!!! FATAL: ${err.message}`);
             console.error('Berhenti total & menutup browser -- evidence integrity tidak bisa dipastikan, cek manual dulu sebelum lanjut.');
             if (context) await context.close().catch(() => {});
+            // process.exit() di bawah ini synchronous -- kalau shutdown
+            // worker/manifest dipindah ke luar (mis. lewat finally di
+            // level lebih atas), itu TIDAK akan sempat jalan. Makanya
+            // dipanggil eksplisit persis di sini, sebelum exit.
+            if (MASKING_ENABLED) {
+              await shutdownMaskingWorker();
+              writeMaskingManifest(EVIDENCE_SIT_DIR);
+            }
             process.exit(1);
           }
           if (isTargetClosedError(err)) {
@@ -1567,5 +1603,10 @@ async function launchBrowser() {
   }
   if (remainingCases !== null && remainingCases.length === 0 && permanentlyFailed.length === 0) {
     console.log('Semua case selesai diproses.');
+  }
+
+  if (MASKING_ENABLED) {
+    await shutdownMaskingWorker();
+    writeMaskingManifest(EVIDENCE_SIT_DIR);
   }
 })();

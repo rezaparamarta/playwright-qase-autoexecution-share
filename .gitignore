@@ -1,3 +1,7 @@
 node_modules/
 auth/
 downloads/
+.masking-offline-output/
+# Model bahasa tesseract.js -- didownload otomatis saat run pertama kali
+# (di-cache di working directory), bukan bagian dari kode.
+*.traineddata

@@ -97,7 +97,34 @@ dengan cara yang sama, contoh: `node compare-suite.js`.
 - `compare-suite.js` — diagnostik: membandingkan daftar case antara run SIT dan UAT.
 - `debug-case354.js`, `inspect-case.js` — tool debug/inspeksi case satu-kali.
 - `config.js` — konfigurasi bersama (project/run Qase) yang dipakai script-script di atas.
+- `evidence-masking.js` — masking otomatis data sensitif (rekening, saldo, nama, dsb.) di evidence sebelum di-attach ke UAT, dipanggil dari `main.js`.
+- `scripts/test-masking-offline.js` — harness buat ngecek visual hasil masking di atas tanpa perlu jalanin `main.js`/browser sama sekali.
 - `zoom-extension/` — Chrome extension kecil untuk auto-zoom tab app.qase.io.
+
+## Masking evidence sensitif
+
+`main.js` otomatis mem-masking (menutup dengan kotak hitam solid) data yang berpotensi
+sensitif di evidence sebelum di-attach ke UAT — nomor rekening, saldo, nama pemilik/
+pegawai, nilai finansial aset, nomor dokumen procurement, dsb. Prosesnya full-otomatis
+(OCR baca label field lalu tutup area di sekitarnya), tidak ada langkah review manual
+per-gambar di tengah `node main.js`.
+
+Karena tidak ada review manual per-gambar, setiap run yang masking-nya aktif otomatis
+menyimpan **manifest** (file JSON) ke folder `evidence-SIT-masking-log` (sejajar folder
+`evidence-SIT` di `Downloads`), isinya ringkasan apa yang ke-mask di tiap gambar. Kalau
+sesekali mau spot-check, lihat angka `imagesWithZeroRegions` di manifest itu dulu —
+itu daftar gambar yang menurut sistem memang tidak ada yang perlu dimasking.
+
+Sebelum pernah mengaktifkan/mengubah pengaturan masking (`MASKING` di
+`evidence-masking.js`) untuk dipakai ke run sungguhan, validasi dulu secara offline:
+
+```
+npm run test-masking-offline
+```
+
+Ini memproses seluruh isi folder `evidence-SIT` yang sudah ada (tanpa menyentuh
+Playwright/Qase sama sekali) dan menyimpan hasilnya ke `.masking-offline-output/` supaya
+bisa dibandingkan visual dengan aslinya.
 
 ## CI
 

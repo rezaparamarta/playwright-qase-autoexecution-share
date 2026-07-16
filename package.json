@@ -6,12 +6,17 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "eslint .",
-    "syntax-check": "node scripts/syntax-check.js"
+    "syntax-check": "node scripts/syntax-check.js",
+    "test-masking-offline": "node scripts/test-masking-offline.js"
   },
   "keywords": [],
   "author": "Reza Paramarta (https://github.com/rezaparamarta)",
   "license": "ISC",
   "type": "commonjs",
+  "dependencies": {
+    "jimp": "^1.6.1",
+    "tesseract.js": "^7.0.0"
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.7.0",
