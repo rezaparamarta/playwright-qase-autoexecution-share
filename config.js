@@ -14,14 +14,14 @@ const path = require('path');
 const os = require('os');
 
 const PROJECT_NAME = 'YOUR_PROJECT_NAME';
-const RUN_TITLE = 'Contoh';
-const RUN_TITLE_UAT = 'Contoh';
+const RUN_TITLE_SIT = 'YOUR_RUN_TITLE_SIT';
+const RUN_TITLE_UAT = 'YOUR_RUN_TITLE_UAT';
 
 module.exports = {
   PROJECT_NAME,
-  RUN_TITLE,
+  RUN_TITLE_SIT,
   RUN_TITLE_UAT,
-  SIT_RUN_PATTERN: new RegExp(`^SIT ${RUN_TITLE}`),
+  SIT_RUN_PATTERN: new RegExp(`^SIT ${RUN_TITLE_SIT}`),
   UAT_RUN_PATTERN: new RegExp(`^UAT ${RUN_TITLE_UAT}`),
 
   // Profile Chrome & extension dipakai bareng lewat launchPersistentContext

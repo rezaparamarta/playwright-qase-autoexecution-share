@@ -51,7 +51,7 @@ npx playwright install chromium
 
 ### 4. Sesuaikan konfigurasi
 
-Buka file `config.js`, lalu isi `PROJECT_NAME`, `RUN_TITLE`, `RUN_TITLE_UAT`, dan
+Buka file `config.js`, lalu isi `PROJECT_NAME`, `RUN_TITLE_SIT`, `RUN_TITLE_UAT`, dan
 `PROJECTS_URL` dengan nilai project/run Qase milikmu sendiri (nilai bawaan di file ini
 cuma placeholder generik, wajib diganti supaya script bisa jalan). Nilai `SUITE_TEXT`
 di `main.js`, `compare-suite.js`, `debug-case354.js`, dan `inspect-case.js` juga perlu
