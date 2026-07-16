@@ -6,7 +6,7 @@ daftar case antar run, dan beberapa tool debug/inspeksi case.
 
 ## Author
 
-**Reza Paramarta** — [github.com/rezaparamarta](https://github.com/rezaparamarta)
+**Reza Paramarta - Senior Software Quality Assurance** — [github.com/rezaparamarta](https://github.com/rezaparamarta)
 
 Project ini dibuat dan dikelola oleh Reza Paramarta. Kalau kamu mendapat/menggunakan
 salinan kode ini, mohon tetap cantumkan atribusi di atas.
