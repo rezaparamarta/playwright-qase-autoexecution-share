@@ -35,10 +35,109 @@ const MASKING = {
   // -- disengaja, karena untuk itu risiko under-masking harus diutamakan
   // di atas noise.
   minWordConfidenceForPhrase: 55,
+  // Kontras yang ditambahkan ke salinan grayscale sebelum OCR (di luar
+  // upscale) -- bantu OCR baca font UI yang tipis. Nilai ini yang dipakai
+  // di semua verifikasi offline; dinaikkan lagi TIDAK terbukti membantu
+  // untuk kasus overlay dialog native yang meredupkan konten di
+  // belakangnya sampai ke level pixel (lihat catatan investigasi
+  // image(44) di percakapan verifikasi -- itu bukan soal kurang kontras,
+  // datanya sendiri sudah hilang).
+  ocrContrast: 0.15,
   // Kotak solid opaque, BUKAN blur/pixelate -- blur bisa direkonstruksi
   // sebagian dan tidak defensible sebagai "redaction" kalau ditanya auditor.
   maskColor: { r: 0, g: 0, b: 0, a: 255 },
   regionPaddingPx: 6,
+
+  // Semua angka yang mengatur BENTUK/UKURAN region deteksi & masking --
+  // dipusatkan di sini (bukan tersebar sebagai angka literal di badan
+  // fungsi) supaya bisa ditinjau & di-tuning tanpa harus mengubah logic.
+  // Sebagian besar berupa RASIO/MULTIPLIER terhadap ukuran teks yang
+  // terbaca (tinggi baris, lebar label, dsb) -- bukan pixel absolut --
+  // supaya tetap masuk akal di resolusi evidence berapa pun, bukan
+  // diam-diam salah di gambar yang lebih besar/kecil dari sampel yang
+  // ditinjau.
+  geometry: {
+    // groupWordsIntoPhrases: dua kata dianggap kandidat "baris yang sama"
+    // (buat urutan sort, sebelum overlap-check yang lebih ketat jalan)
+    // kalau jarak y-center-nya di bawah median-tinggi-kata dikali ini.
+    phraseSortYToleranceRatio: 0.3,
+    // groupWordsIntoPhrases & findSameRowLines: dua elemen dianggap
+    // "sebaris" kalau overlap vertikalnya melebihi porsi ini dari tinggi
+    // baris. 0.4 dipilih supaya toleran ke baseline font yang sedikit
+    // beda tapi tetap menolak baris yang cuma numpang lewat sedikit.
+    sameRowOverlapRatio: 0.4,
+    // groupWordsIntoPhrases: jarak horizontal antar-kata dalam SATU frasa
+    // dibanding tinggi barisnya -- celah lebih lebar dari ini dianggap
+    // sudah pindah kolom/elemen UI lain, bukan lanjutan frasa yang sama.
+    phraseMaxGapRatio: 1.5,
+    // computeLabelRegions (below-block): lebar area value yang dimask di
+    // bawah label form, sebagai kelipatan lebar teks label itu sendiri,
+    // dengan lebar minimum absolut (labelWidth kadang terlalu sempit
+    // buat jadi patokan sendirian, mis. label "Saldo" yang pendek tapi
+    // value-nya bisa panjang).
+    belowBlockWidthMultiplier: 4,
+    belowBlockMinWidthPx: 250,
+    // computeLabelRegions (below-block): tinggi area value di bawah
+    // label, sebagai kelipatan tinggi teks label -- cukup buat 1 baris
+    // value plus sedikit slack, tidak sampai nyerempet field berikutnya.
+    belowBlockHeightMultiplier: 3,
+    // looksLikeHeaderRow: minimal berapa banyak "teman sebaris" supaya
+    // suatu baris dianggap header kolom tabel, bukan label form biasa.
+    // Form 2-kolom di UI ini (mis. "Nama Pemilik" & "Bank" sebaris) tetap
+    // punya tepat 1 teman -- ambang 3 (artinya >=4 kolom total) aman dari
+    // itu, karena semua tabel sungguhan yang sudah ditinjau punya jauh
+    // lebih dari 4 kolom header.
+    headerRowMinSameRowCount: 3,
+    // computeLabelRegions: header kolom tabel yang wajar biasanya berupa
+    // 1-2 kata pendek (mis. "Nomor Rekening", bukan kalimat panjang) --
+    // dibatasi supaya frasa yang kebetulan lebar (garbled OCR/caption)
+    // tidak salah dianggap header lalu memicu computeColumnCellRegions.
+    headerRowMaxLabelWidthRatio: 0.2,
+    // matchLineAgainstLabels: frasa yang jauh lebih panjang dari label
+    // yang dicari (lebih dari label+ini karakter) dilewati sama sekali --
+    // mencegah caption/judul panjang yang cuma KEBETULAN memuat kata
+    // labelnya ikut ke-mask (mis. "Saldo dan seluruh Rekening aktif...").
+    labelFuzzyMaxExtraChars: 20,
+    // matchLineAgainstLabels: toleransi jarak-edit buat label yang CUKUP
+    // PANJANG (lihat labelExactMatchMaxLength buat yang pendek) --
+    // proporsional ke panjang label, bukan angka tetap, supaya label
+    // panjang & pendek sama-sama dapat toleransi yang masuk akal.
+    labelFuzzyDistanceRatio: 0.25,
+    // matchLineAgainstLabels: label sependek ini (atau lebih pendek)
+    // WAJIB exact match, tanpa toleransi fuzzy sama sekali -- 1 huruf
+    // beda di kata sangat pendek (mis. "ATI") bukan lagi "noise OCR",
+    // itu sudah kata lain (kejadian nyata: potongan nama "PRAMDOEDYA AT"
+    // salah kena mask karena dianggap dekat dengan "ATI").
+    labelExactMatchMaxLength: 4,
+    // findPhraseAbove: jarak vertikal maksimal (dikali tinggi baris
+    // acuan) supaya suatu frasa dianggap "langsung di atas" frasa lain,
+    // dan toleransi ketidaksejajaran horizontal yang masih diterima.
+    phraseAboveMaxGapMultiplier: 3,
+    // findPhraseAbove: toleransi overlap vertikal negatif (dua baris
+    // boleh tumpang tindih tipis, mis. karena garis bawah huruf) sebelum
+    // dianggap bukan lagi "tepat di atas".
+    phraseAboveMinGapPx: -2,
+    // computeLoginBadgeRegions: lebar band vertikal (dikali tinggi baris
+    // "Logout") yang disisir buat nemuin nama+role di atasnya sekaligus
+    // -- dibikin lebar (bukan cuma "1 baris di atas") supaya tetap kena
+    // walau salah satu baris di tengah (mis. role "HCD") gagal terbaca
+    // OCR sama sekali (lihat catatan verifikasi offline).
+    loginBadgeVerticalBandMultiplier: 8,
+    // computeLoginBadgeRegions: toleransi horizontal band di atas, supaya
+    // tetap menangkap nama yang mulai lebih ke kiri dari tombol Logout,
+    // TAPI cukup sempit buat tidak ikut menyapu teks di area konten utama
+    // (mis. teks pagination tabel) yang kebetulan sejajar secara vertikal.
+    loginBadgeXToleranceMultiplier: 10,
+    // unionPhraseRegion: padding di sekeliling union bbox beberapa frasa,
+    // sebagai kelipatan tinggi frasa tertinggi di antaranya.
+    phraseUnionPaddingRatio: 0.5,
+    // computeColumnCellRegions: minimal porsi lebar sebuah frasa yang
+    // harus beririsan dengan x-band kolom supaya dianggap "isi kolom
+    // ini" -- di bawah setengah berarti frasa itu lebih banyak berada
+    // di kolom sebelah (kebetulan cuma nyerempet dikit), jangan ikut
+    // dimask.
+    columnCellMinOverlapRatio: 0.5,
+  },
 
   // Katalog label field sensitif, hasil peninjauan langsung evidence asli
   // (dummy) lintas modul PNM: Master Bank/Rekening, Dashboard Rekening,
@@ -206,16 +305,19 @@ function matchLineAgainstLabels(lineText, labels) {
     // KEDUA jalur di bawah (substring maupun windowed-distance) --
     // windowed-distance sendirian tetap bisa nemu 1 kata match persis di
     // tengah frasa panjang kalau ini tidak dicek duluan.
-    if (normalizedLine.length > normalizedLabel.length + 20) continue;
+    if (normalizedLine.length > normalizedLabel.length + MASKING.geometry.labelFuzzyMaxExtraChars) continue;
     if (normalizedLine.includes(normalizedLabel)) return label;
     const labelWords = normalizedLabel.split(' ');
-    // Toleransi 25% cuma masuk akal buat label yang cukup panjang --
+    // Toleransi fuzzy cuma masuk akal buat label yang cukup panjang --
     // label pendek (mis. "ATI", "HCD") wajib exact match, karena 1 huruf
     // beda di kata sependek itu bukan lagi "noise OCR", itu udah kata
     // lain (kejadian nyata: "AT" potongan nama "PRAMDOEDYA AT" kebaca
     // beda 1 huruf dari "ATI" dan salah kena mask -- lihat catatan
     // verifikasi offline).
-    const maxDistance = normalizedLabel.length <= 4 ? 0 : Math.max(1, Math.ceil(normalizedLabel.length * 0.25));
+    const maxDistance =
+      normalizedLabel.length <= MASKING.geometry.labelExactMatchMaxLength
+        ? 0
+        : Math.max(1, Math.ceil(normalizedLabel.length * MASKING.geometry.labelFuzzyDistanceRatio));
     for (let i = 0; i <= lineWords.length - labelWords.length; i++) {
       const windowText = lineWords.slice(i, i + labelWords.length).join(' ');
       if (levenshtein(windowText, normalizedLabel) <= maxDistance) return label;
@@ -256,11 +358,22 @@ function average(nums) {
 // bawah ini menyatukan ulang kata-per-kata berdasarkan jarak visual ASLI
 // (bukan struktur line dari tesseract), supaya kolom yang jauh tetap
 // jadi frasa terpisah walau y-nya kebetulan sejajar.
+function medianWordHeight(words) {
+  if (words.length === 0) return 1;
+  const heights = words.map((w) => Math.max(w.bbox.y1 - w.bbox.y0, 1)).sort((a, b) => a - b);
+  return heights[Math.floor(heights.length / 2)];
+}
+
 function groupWordsIntoPhrases(words) {
+  // Toleransi sort dihitung relatif ke tinggi teks TIPIKAL di gambar ini
+  // (median, bukan pixel tetap) -- evidence datang dalam berbagai
+  // resolusi/crop, jadi angka absolut bisa kelewat longgar di gambar
+  // kecil atau kelewat ketat di gambar besar.
+  const sortYTolerance = medianWordHeight(words) * MASKING.geometry.phraseSortYToleranceRatio;
   const sorted = [...words].sort((a, b) => {
     const ay = (a.bbox.y0 + a.bbox.y1) / 2;
     const by = (b.bbox.y0 + b.bbox.y1) / 2;
-    if (Math.abs(ay - by) > 4) return ay - by;
+    if (Math.abs(ay - by) > sortYTolerance) return ay - by;
     return a.bbox.x0 - b.bbox.x0;
   });
 
@@ -271,12 +384,12 @@ function groupWordsIntoPhrases(words) {
     if (current) {
       const overlap = Math.min(current.y1, w.y1) - Math.max(current.y0, w.y0);
       const refHeight = Math.max(current.y1 - current.y0, w.y1 - w.y0, 1);
-      const sameRow = overlap > refHeight * 0.4;
+      const sameRow = overlap > refHeight * MASKING.geometry.sameRowOverlapRatio;
       const gap = w.x0 - current.x1;
       // Celah antar-kata dalam satu frasa biasanya jauh lebih kecil dari
       // tinggi teksnya sendiri -- celah sebesar itu atau lebih dianggap
       // sudah pindah ke elemen/kolom lain, bukan lagi frasa yang sama.
-      if (sameRow && gap <= refHeight * 1.5) {
+      if (sameRow && gap <= refHeight * MASKING.geometry.phraseMaxGapRatio) {
         current.text += ` ${word.text}`;
         current.x0 = Math.min(current.x0, w.x0);
         current.y0 = Math.min(current.y0, w.y0);
@@ -301,20 +414,15 @@ function findSameRowLines(line, allLines) {
   return allLines.filter((other) => {
     if (other === line) return false;
     const overlap = Math.min(line.bbox.y1, other.bbox.y1) - Math.max(line.bbox.y0, other.bbox.y0);
-    return overlap > rowHeight * 0.4;
+    return overlap > rowHeight * MASKING.geometry.sameRowOverlapRatio;
   });
 }
 
 function looksLikeHeaderRow(line, allLines) {
-  // Ambang 2 kelewat longgar -- form 2-kolom biasa (mis. "Nama Pemilik"
-  // kiri, "Bank" kanan) juga punya persis 1 "teman sebaris", jadi ke-
-  // deteksi salah sebagai header tabel (lihat catatan verifikasi
-  // offline: ini bikin computeColumnCellRegions nyari "value" di
-  // SELURUH sisa gambar di bawahnya). Tabel sungguhan di semua modul
-  // yang sudah ditinjau selalu punya jauh lebih dari 3 kolom header,
-  // jadi ambang ini masih aman buat kasus tabel sambil menyingkirkan
-  // form 2-kolom.
-  return findSameRowLines(line, allLines).length >= 3;
+  // Lihat MASKING.geometry.headerRowMinSameRowCount buat rasionalnya --
+  // ambang ini yang mencegah form 2-kolom biasa ke-deteksi salah sebagai
+  // header tabel.
+  return findSameRowLines(line, allLines).length >= MASKING.geometry.headerRowMinSameRowCount;
 }
 
 function nextColumnBoundary(line, allLines, imageWidth) {
@@ -331,12 +439,13 @@ function nextColumnBoundary(line, allLines, imageWidth) {
 // nama panjang kepotong (lihat catatan verifikasi offline).
 function findPhraseAbove(line, allLines) {
   const lineHeight = line.bbox.y1 - line.bbox.y0;
+  const { phraseAboveMaxGapMultiplier: maxGapMult, phraseAboveMinGapPx: minGap } = MASKING.geometry;
   let best = null;
   for (const other of allLines) {
     if (other === line) continue;
     const gap = line.bbox.y0 - other.bbox.y1;
     const xOverlap = Math.min(other.bbox.x1, line.bbox.x1) - Math.max(other.bbox.x0, line.bbox.x0);
-    if (gap >= -2 && gap <= lineHeight * 3 && xOverlap > -lineHeight * 3) {
+    if (gap >= minGap && gap <= lineHeight * maxGapMult && xOverlap > -lineHeight * maxGapMult) {
       if (!best || other.bbox.y1 > best.bbox.y1) best = other;
     }
   }
@@ -378,7 +487,7 @@ function computeColumnCellRegions(headerLine, allLines, imageWidth, pad) {
     if (line === headerLine || line.bbox.y0 <= headerLine.bbox.y1) continue;
     const lineWidth = line.bbox.x1 - line.bbox.x0;
     const xOverlap = Math.min(line.bbox.x1, rightBound) - Math.max(line.bbox.x0, leftBound);
-    if (xOverlap > lineWidth * 0.5) {
+    if (xOverlap > lineWidth * MASKING.geometry.columnCellMinOverlapRatio) {
       regions.push({ x0: line.bbox.x0 - pad, y0: line.bbox.y0 - pad, x1: line.bbox.x1 + pad, y1: line.bbox.y1 + pad });
     }
   }
@@ -407,7 +516,7 @@ function computeLabelRegions(lines, imageWidth, imageHeight) {
       // berjejer), jalur below-block/inline-right (yang didesain buat
       // form field tunggal) dilewati sama sekali -- keduanya cuma bikin
       // kotak tambahan yang nempel di header itu sendiri, tidak berguna.
-      const isHeader = labelWidth < imageWidth * 0.2 && looksLikeHeaderRow(line, lines);
+      const isHeader = labelWidth < imageWidth * MASKING.geometry.headerRowMaxLabelWidthRatio && looksLikeHeaderRow(line, lines);
 
       if (isHeader) {
         for (const cell of computeColumnCellRegions(line, lines, imageWidth, pad)) {
@@ -426,11 +535,12 @@ function computeLabelRegions(lines, imageWidth, imageHeight) {
       // Layout form di UI ini: label di atas, value di dalam kotak
       // langsung di bawahnya (bukan di sebelah kanan) -- lihat sampel
       // "Ubah Data Bank"/"Tambah Data Bank".
+      const { belowBlockWidthMultiplier, belowBlockMinWidthPx, belowBlockHeightMultiplier } = MASKING.geometry;
       regions.push({
         x0: bbox.x0 - pad,
-        x1: Math.min(rowBoundary, bbox.x0 + Math.max(labelWidth * 4, 250)),
+        x1: Math.min(rowBoundary, bbox.x0 + Math.max(labelWidth * belowBlockWidthMultiplier, belowBlockMinWidthPx)),
         y0: bbox.y1,
-        y1: Math.min(imageHeight, bbox.y1 + labelHeight * 3),
+        y1: Math.min(imageHeight, bbox.y1 + labelHeight * belowBlockHeightMultiplier),
         source: 'label',
         label: matchedLabel,
       });
@@ -458,10 +568,11 @@ function unionPhraseRegion(phrases, imageWidth, pad) {
   const y0 = Math.min(...phrases.map((p) => p.bbox.y0));
   const y1 = Math.max(...phrases.map((p) => p.bbox.y1));
   const h = Math.max(...phrases.map((p) => p.bbox.y1 - p.bbox.y0));
+  const padRatio = MASKING.geometry.phraseUnionPaddingRatio;
   return {
-    x0: Math.max(0, x0 - h * 0.5),
-    x1: Math.min(imageWidth, x1 + h * 0.5),
-    y0: Math.max(0, y0 - h * 0.5),
+    x0: Math.max(0, x0 - h * padRatio),
+    x1: Math.min(imageWidth, x1 + h * padRatio),
+    y0: Math.max(0, y0 - h * padRatio),
     y1: y1 + pad,
   };
 }
@@ -481,7 +592,12 @@ function computeLoginBadgeRegions(lines, imageWidth) {
     // adalah nama -- keduanya di-mask (Logout sendiri TIDAK, itu bukan
     // data sensitif), lebar/tinggi menyesuaikan apa pun yang ketemu.
     if (!matchLineAgainstLabels(line.text, MASKING.loginBadge.logoutMarkerText)) continue;
-    const toMask = findPhrasesInBandAbove(line, lines, 8, 10);
+    const toMask = findPhrasesInBandAbove(
+      line,
+      lines,
+      MASKING.geometry.loginBadgeVerticalBandMultiplier,
+      MASKING.geometry.loginBadgeXToleranceMultiplier
+    );
     if (toMask.length === 0) continue;
     matched = true;
     for (const p of toMask) handledAsNameOrRole.add(p);
@@ -568,7 +684,15 @@ async function maskEvidenceImage(buffer, context) {
   }
 
   const startedAt = Date.now();
-  const image = await Jimp.read(buffer);
+  let image;
+  try {
+    image = await Jimp.read(buffer);
+  } catch (err) {
+    // Buffer gagal di-decode (evidence korup/truncated/bukan gambar
+    // valid) -- integritas masking tidak bisa dipastikan sama sekali
+    // (bahkan belum sempat OCR), jadi fatal sama seperti kegagalan OCR.
+    throw new EvidenceMaskingError(`Gagal decode gambar untuk ${context.sourceLabel}: ${err.message}`);
+  }
   const imageWidth = image.width;
   const imageHeight = image.height;
 
@@ -582,7 +706,7 @@ async function maskEvidenceImage(buffer, context) {
     .clone()
     .resize({ w: imageWidth * upscale, h: imageHeight * upscale })
     .greyscale()
-    .contrast(0.15)
+    .contrast(MASKING.ocrContrast)
     .getBuffer('image/png');
 
   let result;
